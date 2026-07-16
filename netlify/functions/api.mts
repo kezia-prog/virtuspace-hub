@@ -450,9 +450,13 @@ export default async (req: Request, _context: Context) => {
     d.checkins[todayKey()] = { mood, note, ts: Date.now() };
     await dataStore().setJSON(`member:${me.email}`, d);
 
-    // wellbeing alert to owners on Stretched / Struggling (once per mood change)
+    // wellbeing alert to owners on Stretched / Struggling — once per person per day per mood, guaranteed
     const ALERT: Record<string, string> = { stretched: "Stretched", struggling: "Struggling" };
-    if (ALERT[mood] && prevMood !== mood) {
+    const alertKey = `${me.email}:${todayKey()}:${mood}`;
+    const sentAlerts = ((await sharedStore().get("wellbeing-alerts", { type: "json" })) || {}) as Record<string, boolean>;
+    if (ALERT[mood] && !sentAlerts[alertKey]) {
+      sentAlerts[alertKey] = true;
+      await sharedStore().setJSON("wellbeing-alerts", sentAlerts);
       const owners = (await listUsers()).filter((u: any) => u.role === "owner" && u.email !== me.email);
       if (owners.length) {
         const ann = await getAnnouncements();
@@ -617,6 +621,30 @@ export default async (req: Request, _context: Context) => {
       `Invoice ${number} from ${me.name} (${me.email})\nPeriod: ${from} – ${to}\nTotal hours: ${(totalMinutes / 60).toFixed(2)}\nAmount due: TT$${totalAmount}\n\nOpen the hub for the full breakdown: ${appUrl()}`,
       { html, replyTo: me.email, cc: [me.email], fromName: `${me.name} via VirtuSpace Hub` }
     );
+
+    // store the invoice so the owner can open the PDF from the hub
+    const received = ((await sharedStore().get("invoices", { type: "json" })) || []) as any[];
+    received.unshift({
+      id: rid(6),
+      number,
+      name: me.name,
+      email: me.email,
+      from,
+      to,
+      totalMinutes,
+      totalAmount: Number(totalAmount),
+      ts: Date.now(),
+      lines: lines.map((l: any) => ({
+        id: l.id,
+        date: l.date,
+        client: l.client,
+        task: l.task,
+        minutes: l.minutes,
+        hours: +(l.minutes / 60).toFixed(2),
+        amount: +((l.minutes / 60) * rate).toFixed(2),
+      })),
+    });
+    await sharedStore().setJSON("invoices", received.slice(0, 100));
 
     // notify owners in-app
     const ann = await getAnnouncements();
@@ -804,6 +832,12 @@ export default async (req: Request, _context: Context) => {
     user.role = role;
     await usersStore().setJSON(`user:${email}`, user);
     return json({ ok: true, role });
+  }
+
+  if (method === "GET" && path === "/admin/invoices") {
+    if (!isOwner) return json({ error: "Owner only" }, 403);
+    const invoices = (await sharedStore().get("invoices", { type: "json" })) || [];
+    return json({ invoices });
   }
 
   if (method === "GET" && path === "/admin/pnl") {
