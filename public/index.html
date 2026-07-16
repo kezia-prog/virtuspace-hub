@@ -409,9 +409,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [printDoc, setPrintDoc] = useState(null);
-  const flash = (msg) => {
+  const flash = (msg, ms) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 2600);
+    setTimeout(() => setToast(null), ms || Math.max(2600, String(msg).length * 55));
   };
   const refresh = async () => {
     try {
@@ -467,9 +467,12 @@ function App() {
         transform: "translateX(-50%)",
         background: "#2A2A30",
         color: "#fff",
-        padding: "0.6rem 1.1rem",
-        borderRadius: 999,
+        padding: "0.7rem 1.2rem",
+        borderRadius: 16,
         fontSize: 14,
+        lineHeight: 1.5,
+        maxWidth: "min(480px, 92vw)",
+        textAlign: "center",
         boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
         zIndex: 50
       }
@@ -710,7 +713,7 @@ function CheckinCard({ session, refresh, flash }) {
     try {
       await api("/checkin", { body: { mood, note } });
       setEditing(false);
-      flash(MOOD_RESPONSES[mood] || "Checked in \u2014 have a good one");
+      flash(MOOD_RESPONSES[mood] || "Checked in \u2014 have a good one", 8e3);
       await refresh();
     } catch (e) {
       flash(e.message);
@@ -1201,7 +1204,14 @@ function Admin({ flash, refresh, onPrint }) {
     { clients: clientRows.filter((c) => c.name.trim()) },
     "Client list saved"
   );
-  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(ReviewCard, { flash }), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(SectionTitle, null, "Notifications check"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13.5, color: T.inkSoft, minWidth: 200 } }, "Send yourself a test alert \u2014 it should appear on your Team tab with a badge right away. Wellbeing alerts from the team arrive the same way."), /* @__PURE__ */ React.createElement("button", { onClick: () => act("/admin/test-alert", {}, "Test alert sent \u2014 check your Team tab"), style: btnQuiet }, "Send me a test alert"))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(SectionTitle, null, "Team"), info.team.map((m) => /* @__PURE__ */ React.createElement("div", { key: m.email, style: { padding: "0.75rem 0", borderTop: `1px solid ${T.paper}` } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 6 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("b", { style: { fontSize: 15, color: T.ink } }, m.name), m.role !== "va" && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: T.pine, marginLeft: 8, textTransform: "uppercase" } }, m.role), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.inkSoft } }, m.email)), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12.5, fontWeight: 700, color: m.overdue ? "#A33" : m.active ? T.pine : T.lavender } }, !m.active ? "Invited \u2014 awaiting setup" : m.overdue ? `Overdue \xB7 ${m.days} days` : m.lastLog ? `Last log ${shortDate(m.lastLog)}` : "No logs yet")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" } }, !m.active && /* @__PURE__ */ React.createElement("button", { onClick: () => copy(inviteLink(m), "Invite link copied"), style: { ...btnQuiet, fontSize: 12.5, padding: "0.4rem 0.8rem" } }, "Copy invite link"), m.overdue && /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, session && /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(SectionTitle, null, "Today's check-ins"), session.team.filter((m) => m.todayCheckin).length === 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, color: T.inkSoft } }, "No one has checked in yet today."), session.team.filter((m) => m.todayCheckin).sort((a, b) => {
+    const w = (x) => x.todayCheckin.mood === "struggling" ? 0 : x.todayCheckin.mood === "stretched" ? 1 : 2;
+    return w(a) - w(b);
+  }).map((m) => {
+    const mm = moodMeta(m.todayCheckin.mood);
+    const alerty = m.todayCheckin.mood === "stretched" || m.todayCheckin.mood === "struggling";
+    return /* @__PURE__ */ React.createElement("div", { key: m.email, style: { display: "flex", gap: 10, padding: "0.55rem 0", borderTop: `1px solid ${T.paper}`, alignItems: "baseline", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("b", { style: { fontSize: 14.5, color: T.ink, minWidth: 130 } }, m.name), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13.5, fontWeight: alerty ? 700 : 500, color: alerty ? "#A33333" : T.pine } }, mm ? `${mm[1]} ${mm[2]}` : m.todayCheckin.mood), m.todayCheckin.note && /* @__PURE__ */ React.createElement("span", { style: { flex: 1, fontSize: 13, color: T.inkSoft, minWidth: 150 } }, "\u2014 ", m.todayCheckin.note));
+  }), session.team.filter((m) => !m.todayCheckin).length > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: T.inkSoft, marginTop: 10 } }, "Not yet checked in: ", session.team.filter((m) => !m.todayCheckin).map((m) => firstName(m.name)).join(", "))), /* @__PURE__ */ React.createElement(ReviewCard, { flash }), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(SectionTitle, null, "Notifications check"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13.5, color: T.inkSoft, minWidth: 200 } }, "Send yourself a test alert \u2014 it should appear on your Team tab with a badge right away. Wellbeing alerts from the team arrive the same way."), /* @__PURE__ */ React.createElement("button", { onClick: () => act("/admin/test-alert", {}, "Test alert sent \u2014 check your Team tab"), style: btnQuiet }, "Send me a test alert"))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(SectionTitle, null, "Team"), info.team.map((m) => /* @__PURE__ */ React.createElement("div", { key: m.email, style: { padding: "0.75rem 0", borderTop: `1px solid ${T.paper}` } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 6 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("b", { style: { fontSize: 15, color: T.ink } }, m.name), m.role !== "va" && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: T.pine, marginLeft: 8, textTransform: "uppercase" } }, m.role), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.inkSoft } }, m.email)), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12.5, fontWeight: 700, color: m.overdue ? "#A33" : m.active ? T.pine : T.lavender } }, !m.active ? "Invited \u2014 awaiting setup" : m.overdue ? `Overdue \xB7 ${m.days} days` : m.lastLog ? `Last log ${shortDate(m.lastLog)}` : "No logs yet")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" } }, !m.active && /* @__PURE__ */ React.createElement("button", { onClick: () => copy(inviteLink(m), "Invite link copied"), style: { ...btnQuiet, fontSize: 12.5, padding: "0.4rem 0.8rem" } }, "Copy invite link"), m.overdue && /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => act("/admin/remind", { email: m.email }, `Reminder sent to ${firstName(m.name)}`),
