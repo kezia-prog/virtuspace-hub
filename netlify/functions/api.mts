@@ -8,6 +8,8 @@ const dataStore = () => getStore({ name: "hub-data", consistency: "strong" });
 const sharedStore = () => getStore({ name: "hub-shared", consistency: "strong" });
 
 /* ── seed roster ── */
+const API_VERSION = "2.2";
+
 const SEED_MEMBERS = [
   { name: "Khadijah White", email: "khadijah@virtuspacett.com", role: "va" },
   { name: "Abigayle Shade", email: "abigayle@virtuspacett.com", role: "va" },
@@ -369,6 +371,7 @@ export default async (req: Request, _context: Context) => {
       team,
       announcements: visible,
       today: tk,
+      version: API_VERSION,
     });
   }
 
@@ -388,6 +391,24 @@ export default async (req: Request, _context: Context) => {
     d.logs.push(entry);
     await dataStore().setJSON(`member:${me.email}`, d);
     return json({ ok: true, entry });
+  }
+
+  if (method === "POST" && path === "/log/update") {
+    const d = await getData(me.email);
+    let changed = false;
+    d.logs = d.logs.map((l: any) => {
+      if (l.id !== body.id) return l;
+      changed = true;
+      return {
+        ...l,
+        client: body.client ? String(body.client).slice(0, 80) : l.client,
+        task: body.task !== undefined ? String(body.task).slice(0, 200) : l.task,
+        minutes: body.minutes ? Math.max(1, Math.round(Number(body.minutes))) : l.minutes,
+        status: "pending",
+      };
+    });
+    if (changed) await dataStore().setJSON(`member:${me.email}`, d);
+    return json({ ok: true });
   }
 
   if (method === "POST" && path === "/log/delete") {
@@ -698,6 +719,23 @@ export default async (req: Request, _context: Context) => {
 
   /* ---- admin ---- */
   if (!isAdmin && path.startsWith("/admin")) return json({ error: "Admin only" }, 403);
+
+  if (method === "POST" && path === "/admin/test-alert") {
+    const ann = await getAnnouncements();
+    const next = [
+      {
+        id: rid(6),
+        author: "VirtuSpace Hub",
+        to: me.email,
+        text: "Test alert — this is exactly how a wellbeing alert will look. If you can read this, notifications are working.",
+        ts: Date.now(),
+        acks: [],
+      },
+      ...ann,
+    ];
+    await sharedStore().setJSON("announcements", next);
+    return json({ ok: true });
+  }
 
   if (method === "GET" && path === "/admin/team") {
     const users = await listUsers();
