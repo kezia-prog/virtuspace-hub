@@ -176,15 +176,26 @@ const appUrl = () =>
   (Netlify.env.get("APP_URL") || Netlify.env.get("URL") || "").replace(/\/$/, "");
 
 /* ── email (Resend) ── */
-async function sendEmail(to: string, subject: string, text: string) {
+async function sendEmail(
+  to: string,
+  subject: string,
+  text: string,
+  opts: { html?: string; replyTo?: string; cc?: string[]; fromName?: string } = {}
+) {
   const key = Netlify.env.get("RESEND_API_KEY");
   if (!key) return { sent: false, reason: "RESEND_API_KEY is not set" };
-  const from =
-    Netlify.env.get("FROM_EMAIL") || "VirtuSpace Hub <onboarding@resend.dev>";
+  const rawFrom = Netlify.env.get("FROM_EMAIL") || "VirtuSpace Hub <onboarding@resend.dev>";
+  const addrMatch = rawFrom.match(/<([^>]+)>/);
+  const fromAddr = addrMatch ? addrMatch[1] : rawFrom;
+  const from = opts.fromName ? `${opts.fromName} <${fromAddr}>` : rawFrom;
+  const payload: any = { from, to: [to], subject, text };
+  if (opts.html) payload.html = opts.html;
+  if (opts.replyTo) payload.reply_to = opts.replyTo;
+  if (opts.cc && opts.cc.length) payload.cc = opts.cc;
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-    body: JSON.stringify({ from, to: [to], subject, text }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const err = await res.text();
@@ -192,6 +203,9 @@ async function sendEmail(to: string, subject: string, text: string) {
   }
   return { sent: true };
 }
+
+const escHtml = (x: string) =>
+  String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 function reminderEmailText(user: any, info: any) {
   const first = user.name.split(" ")[0];
@@ -431,8 +445,40 @@ export default async (req: Request, _context: Context) => {
     if (!MOODS.includes(mood)) return json({ error: "Pick a mood" }, 400);
     const d = await getData(me.email);
     d.checkins = d.checkins || {};
-    d.checkins[todayKey()] = { mood, note: String(body.note || "").slice(0, 200), ts: Date.now() };
+    const prevMood = d.checkins[todayKey()]?.mood;
+    const note = String(body.note || "").slice(0, 200);
+    d.checkins[todayKey()] = { mood, note, ts: Date.now() };
     await dataStore().setJSON(`member:${me.email}`, d);
+
+    // wellbeing alert to owners on Stretched / Struggling (once per mood change)
+    const ALERT: Record<string, string> = { stretched: "Stretched", struggling: "Struggling" };
+    if (ALERT[mood] && prevMood !== mood) {
+      const owners = (await listUsers()).filter((u: any) => u.role === "owner" && u.email !== me.email);
+      if (owners.length) {
+        const ann = await getAnnouncements();
+        const first = me.name.split(" ")[0];
+        const noticeText = `${me.name} checked in feeling ${ALERT[mood]} today${note ? ` — “${note}”` : ""}. Might be a good moment to reach out.`;
+        const next = [
+          ...owners.map((o: any) => ({
+            id: rid(6),
+            author: "VirtuSpace Hub",
+            to: o.email,
+            text: noticeText,
+            ts: Date.now(),
+            acks: [],
+          })),
+          ...ann,
+        ];
+        await sharedStore().setJSON("announcements", next);
+        for (const o of owners) {
+          await sendEmail(
+            o.email,
+            `Check-in: ${first} is feeling ${ALERT[mood]} today`,
+            `Hi ${o.name.split(" ")[0]},\n\n${me.name} just checked in on the VirtuSpace Daily Hub feeling ${ALERT[mood]}${note ? `:\n\n“${note}”` : "."}\n\nA quick message from you might make her day easier.\n${appUrl()}\n\nVirtuSpace Daily Hub`
+          );
+        }
+      }
+    }
     return json({ ok: true });
   }
 
@@ -537,7 +583,59 @@ export default async (req: Request, _context: Context) => {
       to,
       number: `VS-${initials}-${todayKey().replace(/-/g, "")}`,
       name: me.name,
+      email: me.email,
     });
+  }
+
+  if (method === "POST" && path === "/invoice/send") {
+    const rate = Number(Netlify.env.get("HOURLY_RATE") || 30);
+    const { from, to } = periodRange(String(body.period || "lastWeek"));
+    const d = await getData(me.email);
+    const lines = d.logs
+      .filter((l: any) => l.date >= from && l.date <= to && entryStatus(l) === "approved")
+      .sort((a: any, b: any) => (a.date < b.date ? -1 : 1));
+    if (!lines.length) return json({ error: "No approved entries in that period yet" }, 400);
+    const totalMinutes = lines.reduce((s: number, l: any) => s + l.minutes, 0);
+    const totalAmount = ((totalMinutes / 60) * rate).toFixed(2);
+    const initials = me.name.split(" ").map((p: string) => p[0]).join("").toUpperCase();
+    const number = `VS-${initials}-${todayKey().replace(/-/g, "")}`;
+    const owners = (await listUsers()).filter((u: any) => u.role === "owner");
+    const toEmail = Netlify.env.get("INVOICE_EMAIL") || owners[0]?.email || "hello@virtuspacett.com";
+    const first = me.name.split(" ")[0];
+
+    const rowsHtml = lines
+      .map(
+        (l: any) =>
+          `<tr><td style="padding:6px 8px;border-bottom:1px solid #E1E0D6;font-size:13px">${l.date}</td><td style="padding:6px 8px;border-bottom:1px solid #E1E0D6;font-size:13px">${escHtml(l.client)}</td><td style="padding:6px 8px;border-bottom:1px solid #E1E0D6;font-size:13px">${escHtml(l.task)}</td><td align="right" style="padding:6px 8px;border-bottom:1px solid #E1E0D6;font-size:13px">${(l.minutes / 60).toFixed(2)}</td><td align="right" style="padding:6px 8px;border-bottom:1px solid #E1E0D6;font-size:13px">TT$${((l.minutes / 60) * rate).toFixed(2)}</td></tr>`
+      )
+      .join("");
+    const html = `<div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;color:#33343A"><h2 style="color:#1F0D9E;margin-bottom:2px">Invoice ${number}</h2><p style="margin-top:0;color:#6A6B75">From <b>${escHtml(me.name)}</b> (${me.email}) · Period ${from} – ${to} · Bill to: VirtuSpace</p><table style="width:100%;border-collapse:collapse"><thead><tr><th align="left" style="padding:6px 8px;border-bottom:2px solid #1F0D9E;font-size:12px">DATE</th><th align="left" style="padding:6px 8px;border-bottom:2px solid #1F0D9E;font-size:12px">CLIENT</th><th align="left" style="padding:6px 8px;border-bottom:2px solid #1F0D9E;font-size:12px">TASK</th><th align="right" style="padding:6px 8px;border-bottom:2px solid #1F0D9E;font-size:12px">HOURS</th><th align="right" style="padding:6px 8px;border-bottom:2px solid #1F0D9E;font-size:12px">AMOUNT</th></tr></thead><tbody>${rowsHtml}</tbody></table><p style="text-align:right;font-size:16px;margin-top:14px">Total hours: <b>${(totalMinutes / 60).toFixed(2)}</b> &nbsp;·&nbsp; Amount due: <b style="color:#1F0D9E">TT$${totalAmount}</b></p><p style="color:#6A6B75;font-size:12px">Reply to this email to reach ${escHtml(first)} directly. Sent via the VirtuSpace Daily Hub.</p></div>`;
+
+    const mail = await sendEmail(
+      toEmail,
+      `Invoice ${number} — ${me.name} — ${from} to ${to}`,
+      `Invoice ${number} from ${me.name} (${me.email})\nPeriod: ${from} – ${to}\nTotal hours: ${(totalMinutes / 60).toFixed(2)}\nAmount due: TT$${totalAmount}\n\nOpen the hub for the full breakdown: ${appUrl()}`,
+      { html, replyTo: me.email, cc: [me.email], fromName: `${me.name} via VirtuSpace Hub` }
+    );
+
+    // notify owners in-app
+    const ann = await getAnnouncements();
+    const next = [
+      ...owners
+        .filter((o: any) => o.email !== me.email)
+        .map((o: any) => ({
+          id: rid(6),
+          author: "VirtuSpace Hub",
+          to: o.email,
+          text: `${me.name} submitted invoice ${number} for ${from} – ${to} — TT$${totalAmount} (${(totalMinutes / 60).toFixed(2)} hrs).`,
+          ts: Date.now(),
+          acks: [],
+        })),
+      ...ann,
+    ];
+    await sharedStore().setJSON("announcements", next);
+
+    return json({ ok: true, emailed: mail.sent, emailNote: mail.reason, number });
   }
 
   if (method === "GET" && path === "/budget-status") {
