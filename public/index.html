@@ -329,6 +329,7 @@ function(a,b,c){if(!Vd(b))throw Error(n(200));return Wd(null,a,b,!1,c)};Q.unmoun
 })();
 </script>
 <script>const { useState, useEffect, useRef, useMemo } = React;
+const APP_VERSION = "2.2";
 const T = {
   pine: "#1F0D9E",
   pineSoft: "#3629B5",
@@ -453,7 +454,7 @@ function App() {
   const unread = session.announcements.filter(
     (a) => a.author !== me.name && !(a.acks || []).includes(me.name)
   ).length;
-  return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: T.paper } }, /* @__PURE__ */ React.createElement(Header, { me, onSignOut: signOut }), /* @__PURE__ */ React.createElement(Tabs, { tab, isAdmin: me.role === "admin" || me.role === "owner", unread, onTab: (t) => {
+  return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: T.paper } }, /* @__PURE__ */ React.createElement(Header, { me, onSignOut: signOut, backend: session.version }), /* @__PURE__ */ React.createElement(Tabs, { tab, isAdmin: me.role === "admin" || me.role === "owner", unread, onTab: (t) => {
     setTab(t);
     refresh();
   } }), /* @__PURE__ */ React.createElement("div", { style: { padding: "0 1rem 5rem", maxWidth: 720, margin: "0 auto" } }, tab === "today" && /* @__PURE__ */ React.createElement(Today, { session, refresh, flash }), tab === "log" && /* @__PURE__ */ React.createElement(LogBook, { session, refresh, flash }), tab === "team" && /* @__PURE__ */ React.createElement(TeamBoard, { session, refresh, flash }), tab === "report" && /* @__PURE__ */ React.createElement(Report, { session, onPrint: setPrintDoc, flash }), tab === "admin" && (me.role === "admin" || me.role === "owner") && /* @__PURE__ */ React.createElement(Admin, { flash, refresh, onPrint: setPrintDoc })), toast && /* @__PURE__ */ React.createElement(
@@ -476,8 +477,8 @@ function App() {
     toast
   ), printDoc && /* @__PURE__ */ React.createElement(PrintOverlay, { onClose: () => setPrintDoc(null), filename: printDoc.filename, flash }, printDoc.doc));
 }
-function Header({ me, onSignOut }) {
-  return /* @__PURE__ */ React.createElement("div", { style: { background: T.paper, padding: "1.4rem 1.25rem 0.6rem" } }, /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "baseline", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { ...serif, fontSize: 19, fontWeight: 600, color: T.pine } }, "VirtuSpace ", /* @__PURE__ */ React.createElement("span", { style: { color: T.inkSoft, fontWeight: 400 } }, "Daily Hub")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: T.inkSoft, marginTop: 2 } }, niceDate(/* @__PURE__ */ new Date()))), /* @__PURE__ */ React.createElement(
+function Header({ me, onSignOut, backend }) {
+  return /* @__PURE__ */ React.createElement("div", { style: { background: T.paper, padding: "1.4rem 1.25rem 0.6rem" } }, /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "baseline", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { ...serif, fontSize: 19, fontWeight: 600, color: T.pine } }, "VirtuSpace ", /* @__PURE__ */ React.createElement("span", { style: { color: T.inkSoft, fontWeight: 400 } }, "Daily Hub")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: T.inkSoft, marginTop: 2 } }, niceDate(/* @__PURE__ */ new Date()), " \xB7 v", APP_VERSION, backend !== APP_VERSION && /* @__PURE__ */ React.createElement("span", { style: { color: "#A33333", fontWeight: 700 } }, " \xB7 backend v", backend || "old", " \u2014 redeploy needed"))), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: onSignOut,
@@ -612,6 +613,13 @@ function Today({ session, refresh, flash }) {
     }
   };
   const [newPri, setNewPri] = useState("");
+  const [editIdx, setEditIdx] = useState(null);
+  const [editText, setEditText] = useState("");
+  const saveEdit = () => {
+    if (editIdx === null) return;
+    savePriorities(priorities.map((q, j) => j === editIdx ? { ...q, text: editText.trim() || q.text } : q));
+    setEditIdx(null);
+  };
   const addPriority = () => {
     if (!newPri.trim() || priorities.length >= 3) return;
     savePriorities([...priorities, { text: newPri.trim(), done: false }]);
@@ -625,7 +633,27 @@ function Today({ session, refresh, flash }) {
       style: { width: 22, height: 22, borderRadius: 7, border: `2px solid ${p.done ? T.pine : T.mistDeep}`, background: p.done ? T.pine : "#fff", color: "#fff", fontSize: 13, lineHeight: "18px", flexShrink: 0 }
     },
     p.done ? "\u2713" : ""
-  ), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, fontSize: 15.5, textDecoration: p.done ? "line-through" : "none", color: p.done ? T.inkSoft : T.ink } }, p.text), /* @__PURE__ */ React.createElement(
+  ), editIdx === i ? /* @__PURE__ */ React.createElement("span", { style: { flex: 1, display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      value: editText,
+      onChange: (e) => setEditText(e.target.value),
+      onKeyDown: (e) => e.key === "Enter" && saveEdit(),
+      autoFocus: true,
+      style: { ...inputStyle, flex: 1, padding: "0.35rem 0.6rem", fontSize: 14.5 }
+    }
+  ), /* @__PURE__ */ React.createElement("button", { onClick: saveEdit, style: { ...btnQuiet, padding: "0.3rem 0.7rem", fontSize: 12.5 } }, "Save"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditIdx(null), style: { background: "none", border: "none", color: T.inkSoft, fontSize: 12.5 } }, "Cancel")) : /* @__PURE__ */ React.createElement("span", { style: { flex: 1, fontSize: 15.5, textDecoration: p.done ? "line-through" : "none", color: p.done ? T.inkSoft : T.ink } }, p.text), editIdx !== i && /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => {
+        setEditIdx(i);
+        setEditText(p.text);
+      },
+      "aria-label": "Edit",
+      style: { border: "none", background: "none", color: T.inkSoft, fontSize: 13 }
+    },
+    "\u270E"
+  ), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => savePriorities(priorities.filter((_, j) => j !== i)),
@@ -667,7 +695,7 @@ function Today({ session, refresh, flash }) {
       style: { marginTop: 6, background: "none", border: `1px solid ${T.line}`, color: T.inkSoft, borderRadius: 999, padding: "0.4rem 0.9rem", fontSize: 13 }
     },
     "Carry over to today \u2192"
-  ))), /* @__PURE__ */ React.createElement(TimeLogger, { session, refresh, flash }), todaysLogs.length > 0 && /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(SectionTitle, { right: /* @__PURE__ */ React.createElement("b", { style: { color: T.pine, fontSize: 14 } }, fmtMins(todayTotal)) }, "Logged today"), todaysLogs.map((l) => /* @__PURE__ */ React.createElement(LogRow, { key: l.id, log: l, refresh, flash }))));
+  ))), /* @__PURE__ */ React.createElement(TimeLogger, { session, refresh, flash }), todaysLogs.length > 0 && /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(SectionTitle, { right: /* @__PURE__ */ React.createElement("b", { style: { color: T.pine, fontSize: 14 } }, fmtMins(todayTotal)) }, "Logged today"), todaysLogs.map((l) => /* @__PURE__ */ React.createElement(LogRow, { key: l.id, log: l, refresh, flash, clients: (session.config.clients || []).map((c) => c.name || c) }))));
 }
 function CheckinCard({ session, refresh, flash }) {
   const saved = (session.data.checkins || {})[session.today];
@@ -721,7 +749,10 @@ function CheckinCard({ session, refresh, flash }) {
     }
   ), /* @__PURE__ */ React.createElement("button", { onClick: save, style: { ...btnPrimary, padding: "0 1rem" } }, "Check in")));
 }
-function LogRow({ log, refresh, flash }) {
+function LogRow({ log, refresh, flash, clients }) {
+  const [editing, setEditing] = useState(false);
+  const [client, setClient] = useState(log.client);
+  const [mins, setMins] = useState(String(log.minutes));
   const del = async () => {
     try {
       await api("/log/delete", { body: { id: log.id } });
@@ -730,10 +761,31 @@ function LogRow({ log, refresh, flash }) {
       flash(e.message);
     }
   };
+  const saveEdit = async () => {
+    try {
+      await api("/log/update", { body: { id: log.id, client, minutes: Number(mins) || log.minutes } });
+      setEditing(false);
+      flash("Entry updated \u2014 it goes back to Pending for review");
+      await refresh();
+    } catch (e) {
+      flash(e.message);
+    }
+  };
   const st = log.status || "pending";
   const stColor = st === "approved" ? T.pine : st === "queried" ? "#A33333" : T.lavender;
   const stLabel = st === "approved" ? "Approved" : st === "queried" ? "Queried" : "Pending";
-  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: 10, padding: "0.5rem 0", borderTop: `1px solid ${T.paper}` } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", color: T.inkSoft, whiteSpace: "nowrap" } }, log.client), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, fontSize: 14.5, color: T.ink } }, log.task), /* @__PURE__ */ React.createElement("span", { title: st === "queried" ? "Kezia has a question about this entry \u2014 check in with her" : "", style: { fontSize: 10, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", color: stColor, whiteSpace: "nowrap" } }, stLabel), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13.5, fontWeight: 700, color: T.pine, whiteSpace: "nowrap" } }, fmtMins(log.minutes)), refresh && /* @__PURE__ */ React.createElement("button", { onClick: del, "aria-label": "Delete entry", style: { border: "none", background: "none", color: T.inkSoft } }, "\xD7"));
+  if (editing) {
+    return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "0.5rem 0", borderTop: `1px solid ${T.paper}`, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("select", { value: client, onChange: (e) => setClient(e.target.value), style: { ...inputStyle, padding: "0.4rem 0.5rem", fontSize: 13.5 } }, (clients || [log.client]).map((c) => /* @__PURE__ */ React.createElement("option", { key: c }, c))), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, fontSize: 13.5, color: T.inkSoft, minWidth: 120 } }, log.task), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        value: mins,
+        onChange: (e) => setMins(e.target.value.replace(/[^0-9]/g, "")),
+        inputMode: "numeric",
+        style: { ...inputStyle, width: 62, padding: "0.4rem 0.5rem", fontSize: 13.5 }
+      }
+    ), /* @__PURE__ */ React.createElement("button", { onClick: saveEdit, style: { ...btnQuiet, padding: "0.35rem 0.8rem", fontSize: 12.5 } }, "Save"), /* @__PURE__ */ React.createElement("button", { onClick: () => setEditing(false), style: { background: "none", border: "none", color: T.inkSoft, fontSize: 12.5 } }, "Cancel"));
+  }
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: 10, padding: "0.5rem 0", borderTop: `1px solid ${T.paper}` } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", color: T.inkSoft, whiteSpace: "nowrap" } }, log.client), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, fontSize: 14.5, color: T.ink } }, log.task), /* @__PURE__ */ React.createElement("span", { title: st === "queried" ? "Kezia has a question about this entry \u2014 check in with her" : "", style: { fontSize: 10, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", color: stColor, whiteSpace: "nowrap" } }, stLabel), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13.5, fontWeight: 700, color: T.pine, whiteSpace: "nowrap" } }, fmtMins(log.minutes)), refresh && /* @__PURE__ */ React.createElement("span", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setEditing(true), "aria-label": "Edit entry", style: { border: "none", background: "none", color: T.inkSoft, fontSize: 12.5 } }, "\u270E"), /* @__PURE__ */ React.createElement("button", { onClick: del, "aria-label": "Delete entry", style: { border: "none", background: "none", color: T.inkSoft } }, "\xD7")));
 }
 function TimeLogger({ session, refresh, flash }) {
   const clients = (session.config.clients || []).map((c) => c.name || c);
@@ -843,7 +895,7 @@ function LogBook({ session, refresh, flash }) {
     return /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { color: T.inkSoft, fontSize: 14.5 } }, "No entries yet. Log your first block of time from the Today tab and it will appear here, grouped by day."));
   return byDate.map(([date, logs]) => {
     const total = logs.reduce((s, l) => s + l.minutes, 0);
-    return /* @__PURE__ */ React.createElement(Card, { key: date }, /* @__PURE__ */ React.createElement(SectionTitle, { right: /* @__PURE__ */ React.createElement("b", { style: { color: T.pine, fontSize: 14 } }, fmtMins(total)) }, date === session.today ? "Today" : shortDate(date)), logs.map((l) => /* @__PURE__ */ React.createElement(LogRow, { key: l.id, log: l, refresh, flash })));
+    return /* @__PURE__ */ React.createElement(Card, { key: date }, /* @__PURE__ */ React.createElement(SectionTitle, { right: /* @__PURE__ */ React.createElement("b", { style: { color: T.pine, fontSize: 14 } }, fmtMins(total)) }, date === session.today ? "Today" : shortDate(date)), logs.map((l) => /* @__PURE__ */ React.createElement(LogRow, { key: l.id, log: l, refresh, flash, clients: (session.config.clients || []).map((c) => c.name || c) })));
   });
 }
 function TeamBoard({ session, refresh, flash }) {
@@ -1149,7 +1201,7 @@ function Admin({ flash, refresh, onPrint }) {
     { clients: clientRows.filter((c) => c.name.trim()) },
     "Client list saved"
   );
-  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(ReviewCard, { flash }), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(SectionTitle, null, "Team"), info.team.map((m) => /* @__PURE__ */ React.createElement("div", { key: m.email, style: { padding: "0.75rem 0", borderTop: `1px solid ${T.paper}` } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 6 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("b", { style: { fontSize: 15, color: T.ink } }, m.name), m.role !== "va" && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: T.pine, marginLeft: 8, textTransform: "uppercase" } }, m.role), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.inkSoft } }, m.email)), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12.5, fontWeight: 700, color: m.overdue ? "#A33" : m.active ? T.pine : T.lavender } }, !m.active ? "Invited \u2014 awaiting setup" : m.overdue ? `Overdue \xB7 ${m.days} days` : m.lastLog ? `Last log ${shortDate(m.lastLog)}` : "No logs yet")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" } }, !m.active && /* @__PURE__ */ React.createElement("button", { onClick: () => copy(inviteLink(m), "Invite link copied"), style: { ...btnQuiet, fontSize: 12.5, padding: "0.4rem 0.8rem" } }, "Copy invite link"), m.overdue && /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(ReviewCard, { flash }), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(SectionTitle, null, "Notifications check"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13.5, color: T.inkSoft, minWidth: 200 } }, "Send yourself a test alert \u2014 it should appear on your Team tab with a badge right away. Wellbeing alerts from the team arrive the same way."), /* @__PURE__ */ React.createElement("button", { onClick: () => act("/admin/test-alert", {}, "Test alert sent \u2014 check your Team tab"), style: btnQuiet }, "Send me a test alert"))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(SectionTitle, null, "Team"), info.team.map((m) => /* @__PURE__ */ React.createElement("div", { key: m.email, style: { padding: "0.75rem 0", borderTop: `1px solid ${T.paper}` } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 6 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("b", { style: { fontSize: 15, color: T.ink } }, m.name), m.role !== "va" && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, fontWeight: 700, letterSpacing: 1, color: T.pine, marginLeft: 8, textTransform: "uppercase" } }, m.role), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.inkSoft } }, m.email)), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12.5, fontWeight: 700, color: m.overdue ? "#A33" : m.active ? T.pine : T.lavender } }, !m.active ? "Invited \u2014 awaiting setup" : m.overdue ? `Overdue \xB7 ${m.days} days` : m.lastLog ? `Last log ${shortDate(m.lastLog)}` : "No logs yet")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" } }, !m.active && /* @__PURE__ */ React.createElement("button", { onClick: () => copy(inviteLink(m), "Invite link copied"), style: { ...btnQuiet, fontSize: 12.5, padding: "0.4rem 0.8rem" } }, "Copy invite link"), m.overdue && /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => act("/admin/remind", { email: m.email }, `Reminder sent to ${firstName(m.name)}`),
