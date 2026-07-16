@@ -471,14 +471,16 @@ export default async (req: Request, _context: Context) => {
     d.checkins[todayKey()] = { mood, note, ts: Date.now() };
     await dataStore().setJSON(`member:${me.email}`, d);
 
-    // wellbeing alert to owners on Stretched / Struggling — once per person per day per mood, guaranteed
+    // wellbeing alert on Stretched / Struggling — recipients: owners, else admins, else Kezia directly.
+    // Marked as sent only AFTER the notice is actually posted, so retries always work.
     const ALERT: Record<string, string> = { stretched: "Stretched", struggling: "Struggling" };
     const alertKey = `${me.email}:${todayKey()}:${mood}`;
-    const sentAlerts = ((await sharedStore().get("wellbeing-alerts", { type: "json" })) || {}) as Record<string, boolean>;
+    const sentAlerts = ((await sharedStore().get("wellbeing-alerts-v2", { type: "json" })) || {}) as Record<string, boolean>;
     if (ALERT[mood] && !sentAlerts[alertKey]) {
-      sentAlerts[alertKey] = true;
-      await sharedStore().setJSON("wellbeing-alerts", sentAlerts);
-      const owners = (await listUsers()).filter((u: any) => u.role === "owner" && u.email !== me.email);
+      const all = await listUsers();
+      let owners = all.filter((u: any) => u.role === "owner" && u.email !== me.email);
+      if (!owners.length) owners = all.filter((u: any) => u.role === "admin" && u.email !== me.email);
+      if (!owners.length) owners = all.filter((u: any) => u.email === "kezia@virtuspacett.com" && u.email !== me.email);
       if (owners.length) {
         const ann = await getAnnouncements();
         const first = me.name.split(" ")[0];
@@ -495,6 +497,8 @@ export default async (req: Request, _context: Context) => {
           ...ann,
         ];
         await sharedStore().setJSON("announcements", next);
+        sentAlerts[alertKey] = true;
+        await sharedStore().setJSON("wellbeing-alerts-v2", sentAlerts);
         for (const o of owners) {
           await sendEmail(
             o.email,
